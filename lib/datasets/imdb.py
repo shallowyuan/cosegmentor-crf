@@ -9,9 +9,11 @@ import os
 import os.path as osp
 import PIL
 from utils.cython_bbox import bbox_overlaps
+from shapely.geometry import Polygon
 import numpy as np
 import scipy.sparse
 from fast_rcnn.config import cfg
+from pycocotools import mask as mask
 
 class imdb(object):
     """Image database."""
@@ -112,7 +114,9 @@ class imdb(object):
             entry = {'boxes' : boxes,
                      'gt_overlaps' : self.roidb[i]['gt_overlaps'],
                      'gt_classes' : self.roidb[i]['gt_classes'],
-                     'flipped' : True}
+                     'flipped' : True,
+                     'segmentation': self.roidb[i]['segmentation']
+                     }
             self.roidb.append(entry)
         self._image_index = self._image_index * 2
 
@@ -206,15 +210,17 @@ class imdb(object):
         return {'ar': ar, 'recalls': recalls, 'thresholds': thresholds,
                 'gt_overlaps': gt_overlaps}
 
-    def create_roidb_from_box_list(self, box_list, gt_roidb):
+    def create_roidb_from_box_list(self, box_list, gt_roidb,imsize_list):
         assert len(box_list) == self.num_images, \
                 'Number of boxes must match number of ground-truth images'
         roidb = []
+        print "begin creatte boxes--------\n"
         for i in xrange(self.num_images):
+           # print '%d image start to proceed\n'%i
             boxes = box_list[i]
             num_boxes = boxes.shape[0]
             overlaps = np.zeros((num_boxes, self.num_classes), dtype=np.float32)
-
+            segmentation=[[]]*num_boxes
             if gt_roidb is not None and gt_roidb[i]['boxes'].size > 0:
                 gt_boxes = gt_roidb[i]['boxes']
                 gt_classes = gt_roidb[i]['gt_classes']
@@ -224,6 +230,10 @@ class imdb(object):
                 maxes = gt_overlaps.max(axis=1)
                 I = np.where(maxes > 0)[0]
                 overlaps[I, gt_classes[argmaxes[I]]] = maxes[I]
+                I2 = np.where(maxes > cfg.SEG_WEIGHT)[0]  #for storage tradeoff 
+                for ii in I2:
+                    segmentation[ii]= self.get_segmentation(gt_roidb[i]['segmentation'],boxes[ii,:],argmaxes[ii],imsize_list[i])
+
 
             overlaps = scipy.sparse.csr_matrix(overlaps)
             roidb.append({
@@ -231,9 +241,42 @@ class imdb(object):
                 'gt_classes' : np.zeros((num_boxes,), dtype=np.int32),
                 'gt_overlaps' : overlaps,
                 'flipped' : False,
-                'seg_areas' : np.zeros((num_boxes,), dtype=np.float32),
+                #'seg_areas' : np.zeros((num_boxes,), dtype=np.float32),
+                'segmentation' : segmentation
             })
         return roidb
+
+    def get_segmentation(self,gt_segmentation,box,max_ind,imsize):
+        segmentation=[];
+        gts=gt_segmentation[max_ind]
+        if type(gts) == list:
+            assert (type(gts[0]) != dict)
+            prle= mask.frPyObjects(gts,imsize[0],imsize[1])
+        elif type(gts) == dict and type(gts['counts']) == list:
+            prle= mask.frPyObjects([gts],imsize[0],imsize[1])
+        elif type(gts) == dict and \
+                     type(gts['counts'] == unicode or type(gts['counts']) == str):
+            prle = [gts]
+        else:
+            return segmentation
+        if len(prle)==1:
+            prle=prle[0]
+        else:
+            prle= mask.merge(prle)
+        grle=mask.frPyObjects([[box[0],box[1],box[2],box[1],box[2],box[3],box[0],box[3],box[0],box[1]]],imsize[0],imsize[1])
+        #print grle,'----'
+        pmask=mask.merge([prle,grle[0]],intersect=True)
+        segmentation=pmask
+#            for sm in gts:
+#                poly=Polygon(zip(sm(::2),sm(1::2)))
+#                bpoly=Polygon([(box[0],box[1]),(box[0],box[3]),(box[2],box[3]),(box[2],boxes[1]),(box[0],box[1])])
+#                bpoly=bpoly.intersection(poly)
+#                coords=array(bpoly.exterior.coords)
+#                coords=coords-[box[0],box[1]]
+#                segmentation.append(coords.ravel().tolist())
+        return segmentation
+
+
 
     @staticmethod
     def merge_roidbs(a, b):
@@ -244,8 +287,9 @@ class imdb(object):
                                             b[i]['gt_classes']))
             a[i]['gt_overlaps'] = scipy.sparse.vstack([a[i]['gt_overlaps'],
                                                        b[i]['gt_overlaps']])
-            a[i]['seg_areas'] = np.hstack((a[i]['seg_areas'],
-                                           b[i]['seg_areas']))
+#            a[i]['seg_areas'] = np.hstack((a[i]['seg_areas'],
+#                                           b[i]['seg_areas']))
+            a[i]['segmentation']=a[i]['segmentation']+b[i]['segmentation']
         return a
 
     def competition_mode(self, on):

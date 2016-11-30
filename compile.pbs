@@ -1,0 +1,35 @@
+
+#### preamble
+
+#PBS -M zehuany@umich.edu
+#PBS -m abe
+
+#PBS -A jiadeng_flux
+#PBS -l qos=flux
+#PBS -q flux
+
+#PBS -l nodes=1:ppn=2,pmem=4000mb
+#PBS -l walltime=00:06:00:00
+#PBS -j oe
+#PBS -V
+
+####  End PBS preamble
+
+if [ -s "$PBS_NODEFILE" ] ; then
+    echo "Running on"
+    cat $PBS_NODEFILE
+fi
+
+if [ -d "$PBS_O_WORKDIR" ] ; then
+    cd $PBS_O_WORKDIR
+    echo "Running from $PBS_O_WORKDIR"
+fi
+
+#module load matlab/2015b
+#module load opencv
+#./DenseTrackStab -f /home/zehuany/v_FrisbeeCatch_g20_c05.avi  -o /scratch/jiadeng_flux/zehuany/ucffeat/v_ApplyEyeMakeup_g01_c01.bin
+#make all
+#make test
+module load cuda
+module load mkl
+MPLBACKEND=Agg python ./tools/train_net.py --solver  ./models/cosegmentor/solver.prototxt --weights data/models/imagenet_models/VGG16.v2.caffemodel --imdb coco_2014_train

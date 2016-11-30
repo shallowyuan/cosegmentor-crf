@@ -11,6 +11,7 @@ import numpy as np
 from fast_rcnn.config import cfg
 from fast_rcnn.bbox_transform import bbox_transform
 from utils.cython_bbox import bbox_overlaps
+from pycocotools import mask as mask
 import PIL
 
 def prepare_roidb(imdb):
@@ -24,6 +25,7 @@ def prepare_roidb(imdb):
              for i in xrange(imdb.num_images)]
     roidb = imdb.roidb
     for i in xrange(len(imdb.image_index)):
+	print i
         roidb[i]['image'] = imdb.image_path_at(i)
         roidb[i]['width'] = sizes[i][0]
         roidb[i]['height'] = sizes[i][1]
@@ -35,13 +37,43 @@ def prepare_roidb(imdb):
         max_classes = gt_overlaps.argmax(axis=1)
         roidb[i]['max_classes'] = max_classes
         roidb[i]['max_overlaps'] = max_overlaps
-        # sanity checks
+        roidb[i]['segmentation'] = crop_mask(roidb[i]['boxes'],roidb[i]['segmentation'],roidb[i]['flipped'],sizes[i])
+        # sanity checks']
         # max overlap of 0 => class should be zero (background)
         zero_inds = np.where(max_overlaps == 0)[0]
         assert all(max_classes[zero_inds] == 0)
         # max overlap > 0 => class should not be zero (must be a fg class)
         nonzero_inds = np.where(max_overlaps > 0)[0]
         assert all(max_classes[nonzero_inds] != 0)
+
+def crop_mask(boxes,segmentations,flipped, imsize):
+    assert (boxes.shape[0]==len(segmentations))
+    psegmentations=[]
+    for i in xrange(len(segmentations)):
+        gts=segmentations[i]
+        box=boxes[i,:]
+        if type(gts) == list and gts:
+            assert (type(gts[0]) != dict)
+            prle= mask.frPyObjects(gts,imsize[1],imsize[0])
+        elif type(gts) == dict and type(gts['counts']) == list:
+            prle= mask.frPyObjects([gts],imsize[1],imsize[0])
+        elif type(gts) == dict and \
+                     type(gts['counts'] == unicode or type(gts['counts']) == str):
+            prle = [gts]
+        else:
+            #print '{} box has no segmentation'.format(i)
+            psegmentations.append([])
+            continue
+        if len(prle)==1:
+            prle=prle[0]
+        else:
+            prle= mask.merge(prle)
+        pmask=mask.decode([prle])
+        if flipped:
+            pmask=pmask[:,::-1,:]
+        pmask=np.copy(pmask[box[1]:box[3],box[0]:box[2],:],order='F')
+        psegmentations.append(mask.encode(pmask))
+    return psegmentations
 
 def add_bbox_regression_targets(roidb):
     """Add information needed to train bounding-box regressors."""

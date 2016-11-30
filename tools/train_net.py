@@ -33,7 +33,7 @@ def parse_args():
                         default=None, type=str)
     parser.add_argument('--iters', dest='max_iters',
                         help='number of iterations to train',
-                        default=40000, type=int)
+                        default=240000, type=int)
     parser.add_argument('--weights', dest='pretrained_model',
                         help='initialize with pretrained model weights',
                         default=None, type=str)
@@ -43,12 +43,19 @@ def parse_args():
     parser.add_argument('--imdb', dest='imdb_name',
                         help='dataset to train on',
                         default='voc_2007_trainval', type=str)
+    parser.add_argument('--timdb', dest='timdb_name',
+                        help='dataset to train on',
+                        default='voc_2007_trainval', type=str)
     parser.add_argument('--rand', dest='randomize',
                         help='randomize (do not use a fixed seed)',
                         action='store_true')
     parser.add_argument('--set', dest='set_cfgs',
                         help='set config keys', default=None,
                         nargs=argparse.REMAINDER)
+    parser.add_argument('--snapshot', dest='snapshot',
+                        help='set config keys', default=None,
+                        type=str)
+
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -101,12 +108,13 @@ if __name__ == '__main__':
     caffe.set_mode_gpu()
     caffe.set_device(args.gpu_id)
 
+    imdbt, roidbt = combined_roidb(args.timdb_name)
     imdb, roidb = combined_roidb(args.imdb_name)
     print '{:d} roidb entries'.format(len(roidb))
 
     output_dir = get_output_dir(imdb)
     print 'Output will be saved to `{:s}`'.format(output_dir)
 
-    train_net(args.solver, roidb, output_dir,
+    train_net(args.solver, roidb, roidbt,output_dir,
               pretrained_model=args.pretrained_model,
-              max_iters=args.max_iters)
+              max_iters=args.max_iters,snapshot=args.snapshot)

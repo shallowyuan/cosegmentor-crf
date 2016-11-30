@@ -3,3 +3,16 @@
 lib/build
 lib/pycocotools/_mask.c
 lib/pycocotools/_mask.so
+core*
+*.jpg
+*backup
+*backup/
+*.o*
+*.so
+data/
+output/
+log/
+*.txt
+models/
+output
+ObjectDiscovery/

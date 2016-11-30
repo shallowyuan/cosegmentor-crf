@@ -23,7 +23,7 @@ class SolverWrapper(object):
     use to unnormalize the learned bounding-box regression weights.
     """
 
-    def __init__(self, solver_prototxt, roidb, output_dir,
+    def __init__(self, solver_prototxt, roidb, roidbt,output_dir,
                  pretrained_model=None):
         """Initialize the SolverWrapper."""
         self.output_dir = output_dir
@@ -39,6 +39,7 @@ class SolverWrapper(object):
             self.bbox_means, self.bbox_stds = \
                     rdl_roidb.add_bbox_regression_targets(roidb)
             print 'done'
+        print solver_prototxt
 
         self.solver = caffe.SGDSolver(solver_prototxt)
         if pretrained_model is not None:
@@ -46,11 +47,13 @@ class SolverWrapper(object):
                    'weights from {:s}').format(pretrained_model)
             self.solver.net.copy_from(pretrained_model)
 
+
         self.solver_param = caffe_pb2.SolverParameter()
         with open(solver_prototxt, 'rt') as f:
             pb2.text_format.Merge(f.read(), self.solver_param)
 
         self.solver.net.layers[0].set_roidb(roidb)
+        self.solver.test_nets[0].layers[0].set_roidb(roidbt)
 
     def snapshot(self):
         """Take a snapshot of the network after unnormalizing the learned
@@ -113,7 +116,8 @@ class SolverWrapper(object):
 
 def get_training_roidb(imdb):
     """Returns a roidb (Region of Interest database) for use in training."""
-    if cfg.TRAIN.USE_FLIPPED:
+    if cfg.TRAIN.USE_FLIPPED and imdb._image_set != 'val':
+    #if cfg.TRAIN.USE_FLIPPED:
         print 'Appending horizontally-flipped training examples...'
         imdb.append_flipped_images()
         print 'done'
@@ -142,21 +146,30 @@ def filter_roidb(roidb):
         return valid
 
     num = len(roidb)
-    filtered_roidb = [entry for entry in roidb if is_valid(entry)]
+    if num>30000:
+    	delinds=[23895,23895+49999]
+    else:
+    	delinds=[]
+    filtered_roidb = [entry for i, entry in enumerate(roidb) if is_valid(entry) and i not in delinds]
     num_after = len(filtered_roidb)
     print 'Filtered {} roidb entries: {} -> {}'.format(num - num_after,
                                                        num, num_after)
     return filtered_roidb
 
-def train_net(solver_prototxt, roidb, output_dir,
-              pretrained_model=None, max_iters=40000):
+def train_net(solver_prototxt, roidb, roidbt, output_dir,
+              pretrained_model=None, max_iters=280000,snapshot=None):
     """Train a Fast R-CNN network."""
 
     roidb = filter_roidb(roidb)
-    sw = SolverWrapper(solver_prototxt, roidb, output_dir,
+    roidbt = filter_roidb(roidbt)
+    sw = SolverWrapper(solver_prototxt, roidb,roidbt, output_dir,
                        pretrained_model=pretrained_model)
 
     print 'Solving...'
-    model_paths = sw.train_model(max_iters)
+    #model_paths = sw.train_model(max_iters)
+    #self.solver.step(max_iters)
+    sw.solver.restore(snapshot)
+    print 'Restoring from %s' % snapshot
+    sw.solver.solve()
     print 'done solving'
     return model_paths

@@ -16,6 +16,7 @@ from roi_data_layer.minibatch import get_minibatch
 import numpy as np
 import yaml
 from multiprocessing import Process, Queue
+import pickle
 
 class RoIDataLayer(caffe.Layer):
     """Fast R-CNN data layer used for training."""
@@ -32,13 +33,14 @@ class RoIDataLayer(caffe.Layer):
             inds = np.hstack((
                 np.random.permutation(horz_inds),
                 np.random.permutation(vert_inds)))
+            print inds.shape
             inds = np.reshape(inds, (-1, 2))
             row_perm = np.random.permutation(np.arange(inds.shape[0]))
             inds = np.reshape(inds[row_perm, :], (-1,))
             self._perm = inds
         else:
             self._perm = np.random.permutation(np.arange(len(self._roidb)))
-        self._cur = 0
+	self._cur=0
 
     def _get_next_minibatch_inds(self):
         """Return the roidb indices for the next minibatch."""
@@ -60,12 +62,18 @@ class RoIDataLayer(caffe.Layer):
         else:
             db_inds = self._get_next_minibatch_inds()
             minibatch_db = [self._roidb[i] for i in db_inds]
-            return get_minibatch(minibatch_db, self._num_classes)
+            return get_minibatch(minibatch_db, 1)
 
     def set_roidb(self, roidb):
         """Set the roidb to be used by this layer during training."""
         self._roidb = roidb
-        self._shuffle_roidb_inds()
+        print len(roidb)
+	if self.phase=="TRAIN":
+	    self._shuffle_roidb_inds()
+	else:
+            self._perm = np.arange(len(self._roidb))
+	print 'phase %s: dataset: %d' % (self.phase,len(self._roidb))
+        self._cur = 0
         if cfg.TRAIN.USE_PREFETCH:
             self._blob_queue = Queue(10)
             self._prefetch_process = BlobFetcher(self._blob_queue,
@@ -85,8 +93,10 @@ class RoIDataLayer(caffe.Layer):
 
         # parse the layer parameter string, which must be valid YAML
         layer_params = yaml.load(self.param_str_)
+        #self.count=0;
 
-        self._num_classes = layer_params['num_classes']
+        #self._num_classes = layer_params['num_classes']
+        self._num_classes = 1
 
         self._name_to_top_map = {}
 
@@ -135,8 +145,18 @@ class RoIDataLayer(caffe.Layer):
                 top[idx].reshape(1, self._num_classes * 4)
                 self._name_to_top_map['bbox_outside_weights'] = idx
                 idx += 1
-
+            elif cfg.TRAIN.SEGS:
+                # bbox_targets blob: R bounding-box regression targets with 4
+                # targets per class
+                top[idx].reshape(1)
+                self._name_to_top_map['mask_weights'] = idx
+                idx += 1
+                top[idx].reshape(1, cfg.MWIDTH * cfg.MHEIGHT)
+                self._name_to_top_map['mask_targets'] = idx
+                idx += 1
+                
         print 'RoiDataLayer: name_to_top:', self._name_to_top_map
+	print len(top)
         assert len(top) == len(self._name_to_top_map)
 
     def forward(self, bottom, top):
@@ -149,6 +169,12 @@ class RoIDataLayer(caffe.Layer):
             top[top_ind].reshape(*(blob.shape))
             # Copy data into net's input blobs
             top[top_ind].data[...] = blob.astype(np.float32, copy=False)
+#        print top[2].data, 'label------------------\n',top[3].data,'weight---------------\n',\
+#		top[1].data,'rois--------------------------------------\n'
+#        fn ='base_%d.pkl'%self.count
+#        self.count += 1
+#        with open(fn,'w') as f:
+#            pickle.dump(top[4].data,f)
 
     def backward(self, top, propagate_down, bottom):
         """This layer does not propagate gradients."""

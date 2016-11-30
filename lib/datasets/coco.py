@@ -21,6 +21,7 @@ from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from pycocotools import mask as COCOmask
 
+
 def _filter_crowd_proposals(roidb, crowd_thresh):
     """
     Finds proposals that are inside crowd regions and marks them with
@@ -42,15 +43,17 @@ def _filter_crowd_proposals(roidb, crowd_thresh):
         roidb[ix]['gt_overlaps'] = scipy.sparse.csr_matrix(overlaps)
     return roidb
 
+
 class coco(imdb):
+
     def __init__(self, image_set, year):
         imdb.__init__(self, 'coco_' + year + '_' + image_set)
         # COCO specific config options
-        self.config = {'top_k' : 2000,
-                       'use_salt' : True,
-                       'cleanup' : True,
-                       'crowd_thresh' : 0.7,
-                       'min_size' : 2}
+        self.config = {'top_k': 2000,
+                       'use_salt': True,
+                       'cleanup': True,
+                       'crowd_thresh': 0.7,
+                       'min_size': 10}
         # name, paths
         self._year = year
         self._image_set = image_set
@@ -62,17 +65,24 @@ class coco(imdb):
         self._class_to_ind = dict(zip(self.classes, xrange(self.num_classes)))
         self._class_to_coco_cat_id = dict(zip([c['name'] for c in cats],
                                               self._COCO.getCatIds()))
-        self._image_index = self._load_image_set_index()
+	print image_set
+        if image_set == 'val':
+            self._image_index = self._load_image_set_index()[1:5000]
+        else:
+            self._image_index = self._load_image_set_index()[1:50000]
+            #self._image_index = self._load_image_set_index()[1:10000]
+
         # Default to roidb handler
-        self.set_proposal_method('selective_search')
+        self.set_proposal_method('mcg')
         self.competition_mode(False)
 
         # Some image sets are "views" (i.e. subsets) into others.
         # For example, minival2014 is a random 5000 image subset of val2014.
-        # This mapping tells us where the view's images and proposals come from.
+        # This mapping tells us where the view's images and proposals come
+        # from.
         self._view_map = {
-            'minival2014' : 'val2014',          # 5k val2014 subset
-            'valminusminival2014' : 'val2014',  # val2014 \setminus minival2014
+            'minival2014': 'val2014',          # 5k val2014 subset
+            'valminusminival2014': 'val2014',  # val2014 \setminus minival2014
         }
         coco_name = image_set + year  # e.g., "val2014"
         self._data_name = (self._view_map[coco_name]
@@ -84,7 +94,7 @@ class coco(imdb):
 
     def _get_ann_file(self):
         prefix = 'instances' if self._image_set.find('test') == -1 \
-                             else 'image_info'
+            else 'image_info'
         return osp.join(self._data_path, 'annotations',
                         prefix + '_' + self._image_set + self._year + '.json')
 
@@ -117,7 +127,7 @@ class coco(imdb):
         image_path = osp.join(self._data_path, 'images',
                               self._data_name, file_name)
         assert osp.exists(image_path), \
-                'Path does not exist: {}'.format(image_path)
+            'Path does not exist: {}'.format(image_path)
         return image_path
 
     def selective_search_roidb(self):
@@ -169,6 +179,7 @@ class coco(imdb):
         lib/datasets/tools/mcg_munge.py.
         """
         box_list = []
+        imsize_list = []
         top_k = self.config['top_k']
         valid_methods = [
             'MCG',
@@ -187,23 +198,29 @@ class coco(imdb):
                 self._get_box_file(index))
 
             raw_data = sio.loadmat(box_file)['boxes']
-            boxes = np.maximum(raw_data - 1, 0).astype(np.uint16)
+            boxes = np.maximum(raw_data - 1, 0).astype(np.int16)
             if method == 'MCG':
                 # Boxes from the MCG website are in (y1, x1, y2, x2) order
                 boxes = boxes[:, (1, 0, 3, 2)]
+            im_ann = self._COCO.loadImgs(index)[0]
+            width = im_ann['width']
+            height = im_ann['height']
+            imsize_list.append([height, width])
             # Remove duplicate boxes and very small boxes and then take top k
             keep = ds_utils.unique_boxes(boxes)
             boxes = boxes[keep, :]
             keep = ds_utils.filter_small_boxes(boxes, self.config['min_size'])
             boxes = boxes[keep, :]
             boxes = boxes[:top_k, :]
+            boxes[:, 0] = np.maximum(boxes[:, 0] - cfg.MARGIN, 0)
+            boxes[:, 2] = np.minimum(boxes[:, 2] + cfg.MARGIN, width - 1)
+            boxes[:, 1] = np.maximum(boxes[:, 1] - cfg.MARGIN, 0)
+            boxes[:, 3] = np.minimum(boxes[:, 3] + cfg.MARGIN, height - 1)
             box_list.append(boxes)
             # Sanity check
-            im_ann = self._COCO.loadImgs(index)[0]
-            width = im_ann['width']
-            height = im_ann['height']
+
             ds_utils.validate_boxes(boxes, width=width, height=height)
-        return self.create_roidb_from_box_list(box_list, gt_roidb)
+        return self.create_roidb_from_box_list(box_list, gt_roidb, imsize_list)
 
     def gt_roidb(self):
         """
@@ -244,7 +261,14 @@ class coco(imdb):
             y1 = np.max((0, obj['bbox'][1]))
             x2 = np.min((width - 1, x1 + np.max((0, obj['bbox'][2] - 1))))
             y2 = np.min((height - 1, y1 + np.max((0, obj['bbox'][3] - 1))))
-            if obj['area'] > 0 and x2 >= x1 and y2 >= y1:
+#            for ii in xrange(len(obj['segmentation'])):
+#                tip=np.reshape(np.array(obj['segmentation'][ii]),(-1,2))
+#                tip[:,0]=np.maximum(tip[:,0],0)
+#                tip[:,0]=np.minimum(tip[:,0],width-1)
+#                tip[:,1]=np.maximum(tip[:,1],0)
+#                tip[:,1]=np.minimum(tip[:,1],height-1)
+#                obj['segmentation'][ii]=tip.ravel().tolist()
+            if obj['area'] > 0 and x2 >= x1 + self.config['min_size'] and y2 >= y1 + self.config['min_size']:
                 obj['clean_bbox'] = [x1, y1, x2, y2]
                 valid_objs.append(obj)
         objs = valid_objs
@@ -254,6 +278,7 @@ class coco(imdb):
         gt_classes = np.zeros((num_objs), dtype=np.int32)
         overlaps = np.zeros((num_objs, self.num_classes), dtype=np.float32)
         seg_areas = np.zeros((num_objs), dtype=np.float32)
+        segmentation = []
 
         # Lookup table to map from COCO category ids to our internal class
         # indices
@@ -266,6 +291,8 @@ class coco(imdb):
             boxes[ix, :] = obj['clean_bbox']
             gt_classes[ix] = cls
             seg_areas[ix] = obj['area']
+            segmentation.append(obj['segmentation'])
+
             if obj['iscrowd']:
                 # Set overlap to -1 for all classes for crowd objects
                 # so they will be excluded during training
@@ -275,11 +302,12 @@ class coco(imdb):
 
         ds_utils.validate_boxes(boxes, width=width, height=height)
         overlaps = scipy.sparse.csr_matrix(overlaps)
-        return {'boxes' : boxes,
+        return {'boxes': boxes,
                 'gt_classes': gt_classes,
-                'gt_overlaps' : overlaps,
-                'flipped' : False,
-                'seg_areas' : seg_areas}
+                'gt_overlaps': overlaps,
+                'flipped': False,
+                'seg_areas': seg_areas,
+                'segmentation': segmentation}
 
     def _get_box_file(self, index):
         # first 14 chars / first 22 chars / all chars + .mat
@@ -291,6 +319,7 @@ class coco(imdb):
     def _print_detection_eval_metrics(self, coco_eval):
         IoU_lo_thresh = 0.5
         IoU_hi_thresh = 0.95
+
         def _get_thr_ind(coco_eval, thr):
             ind = np.where((coco_eval.params.iouThrs > thr - 1e-5) &
                            (coco_eval.params.iouThrs < thr + 1e-5))[0][0]
@@ -306,14 +335,15 @@ class coco(imdb):
         precision = \
             coco_eval.eval['precision'][ind_lo:(ind_hi + 1), :, :, 0, 2]
         ap_default = np.mean(precision[precision > -1])
-        print ('~~~~ Mean and per-category AP @ IoU=[{:.2f},{:.2f}] '
-               '~~~~').format(IoU_lo_thresh, IoU_hi_thresh)
+        print('~~~~ Mean and per-category AP @ IoU=[{:.2f},{:.2f}] '
+              '~~~~').format(IoU_lo_thresh, IoU_hi_thresh)
         print '{:.1f}'.format(100 * ap_default)
         for cls_ind, cls in enumerate(self.classes):
             if cls == '__background__':
                 continue
             # minus 1 because of __background__
-            precision = coco_eval.eval['precision'][ind_lo:(ind_hi + 1), :, cls_ind - 1, 0, 2]
+            precision = coco_eval.eval['precision'][
+                ind_lo:(ind_hi + 1), :, cls_ind - 1, 0, 2]
             ap = np.mean(precision[precision > -1])
             print '{:.1f}'.format(100 * ap)
 
@@ -345,10 +375,10 @@ class coco(imdb):
             ws = dets[:, 2] - xs + 1
             hs = dets[:, 3] - ys + 1
             results.extend(
-              [{'image_id' : index,
-                'category_id' : cat_id,
-                'bbox' : [xs[k], ys[k], ws[k], hs[k]],
-                'score' : scores[k]} for k in xrange(dets.shape[0])])
+                [{'image_id': index,
+                  'category_id': cat_id,
+                  'bbox': [xs[k], ys[k], ws[k], hs[k]],
+                  'score': scores[k]} for k in xrange(dets.shape[0])])
         return results
 
     def _write_coco_results_file(self, all_boxes, res_file):
@@ -361,7 +391,7 @@ class coco(imdb):
             if cls == '__background__':
                 continue
             print 'Collecting {} results ({:d}/{:d})'.format(cls, cls_ind,
-                                                          self.num_classes - 1)
+                                                             self.num_classes - 1)
             coco_cat_id = self._class_to_coco_cat_id[cls]
             results.extend(self._coco_results_one_category(all_boxes[cls_ind],
                                                            coco_cat_id))
