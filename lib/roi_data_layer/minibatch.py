@@ -151,6 +151,7 @@ def _sample_rois(roidb, fg_rois_per_image, rois_per_image, num_classes):
     labels[fg_rois_per_this_image:] = 0
     overlaps = overlaps[keep_inds]
     rois = rois[keep_inds]
+    print len(rois)
 
     bbox_targets, bbox_inside_weights = _get_bbox_regression_labels(
         roidb['bbox_targets'][keep_inds, :], num_classes)
@@ -166,9 +167,11 @@ def _sample_segs(roidb, fg_rois_per_image, rois_per_image):
     overlaps = roidb['max_overlaps']
     rois = roidb['boxes']
     segmentations = roidb['segmentation']
+    print len(rois)
 
     # Select foreground RoIs as those with >= FG_THRESH overlap
     fg_inds = np.where(overlaps >= cfg.TRAIN.FG_THRESH)[0]
+    print fg_inds
     # print cfg.TRAIN.FG_THRESH
     # Guard against the case when an image has fewer than fg_rois_per_image
     # foreground RoIs
@@ -200,6 +203,7 @@ def _sample_segs(roidb, fg_rois_per_image, rois_per_image):
     labels[:fg_rois_per_this_image] = 1
     overlaps = overlaps[keep_inds]
     rois = rois[keep_inds]
+    print len(rois)
     # print rois[keep_inds[:fg_rois_per_this_image]],'\n'
     segmentations = [segmentations[iind] for iind in keep_inds]
 

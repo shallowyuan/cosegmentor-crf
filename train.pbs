@@ -7,8 +7,8 @@
 #PBS -l qos=flux
 #PBS -q fluxoe
 
-#PBS -l nodes=1:ppn=1:gpus=1,mem=24gb
-#PBS -l walltime=04:00:00:00
+#PBS -l nodes=1:ppn=1:gpus=1,mem=28gb
+#PBS -l walltime=02:00:00:00
 #PBS -j oe
 #PBS -V
 
@@ -32,5 +32,5 @@ set -e
 export PYTHONUNBUFFERED="True"
 LOG="log/train_seg.txt.`date +'%Y-%m-%d_%H-%M-%S'`"
 exec &> >(tee -a "$LOG")
-MAPLBACKEND=Agg python ./tools/train_net.py --solver  ./models/cosegmentor/solver.prototxt  --imdb coco_2014_train --timdb coco_2014_val --snapshot data/models/caffe/vgg16_fast_rcnn_iter_54000.solverstate
-#MPLBACKEND=Agg python ./tools/train_net.py --solver  ./models/cosegmentor/solver.prototxt --weights data/models/imagenet_models/VGG16.v2.caffemodel --imdb coco_2014_train --timdb coco_2014_val --snapshot=data/models/caffe/
+#MAPLBACKEND=Agg python ./tools/train_net.py --solver  ./models/cosegmentor/solver.prototxt  --imdb coco_2014_train --timdb coco_2014_val --snapshot data/models/caffe/vgg16_fast_rcnn_iter_58000.solverstate
+MPLBACKEND=Agg python ./tools/train_net.py --solver  ./models/cosegmentor/solver-x.prototxt --weights data/models/imagenet_models/VGG16.v2.caffemodel --imdb coco_2014_train --timdb coco_2014_val 

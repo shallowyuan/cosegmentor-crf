@@ -67,9 +67,9 @@ class coco(imdb):
                                               self._COCO.getCatIds()))
 	print image_set
         if image_set == 'val':
-            self._image_index = self._load_image_set_index()[1:5000]
+            self._image_index = self._load_image_set_index()[1:5]
         else:
-            self._image_index = self._load_image_set_index()[1:50000]
+            self._image_index = self._load_image_set_index()[1:50]
             #self._image_index = self._load_image_set_index()[1:10000]
 
         # Default to roidb handler
@@ -146,7 +146,7 @@ class coco(imdb):
         top_k = self.config['top_k']
         cache_file = osp.join(self.cache_path, self.name +
                               '_{:s}_top{:d}'.format(method, top_k) +
-                              '_roidb.pkl')
+                              '_roidbt.pkl')
 
         if osp.exists(cache_file):
             with open(cache_file, 'rb') as fid:
@@ -157,6 +157,7 @@ class coco(imdb):
 
         if self._image_set in self._gt_splits:
             gt_roidb = self.gt_roidb()
+	    #roidb = gt_roidb
             method_roidb = self._load_proposals(method, gt_roidb)
             roidb = imdb.merge_roidbs(gt_roidb, method_roidb)
             # Make sure we don't use proposals that are contained in crowds
@@ -227,7 +228,7 @@ class coco(imdb):
         Return the database of ground-truth regions of interest.
         This function loads/saves from/to a cache file to speed up future calls.
         """
-        cache_file = osp.join(self.cache_path, self.name + '_gt_roidb.pkl')
+        cache_file = osp.join(self.cache_path, self.name + '_gt_roidbt.pkl')
         if osp.exists(cache_file):
             with open(cache_file, 'rb') as fid:
                 roidb = cPickle.load(fid)

@@ -165,11 +165,14 @@ def train_net(solver_prototxt, roidb, roidbt, output_dir,
     sw = SolverWrapper(solver_prototxt, roidb,roidbt, output_dir,
                        pretrained_model=pretrained_model)
 
-    print 'Solving...'
     #model_paths = sw.train_model(max_iters)
     #self.solver.step(max_iters)
-    sw.solver.restore(snapshot)
-    print 'Restoring from %s' % snapshot
+    if snapshot is not None:
+    	sw.solver.restore(snapshot)
+    	print 'Restoring from %s' % snapshot
+    if pretrained_model is not None:
+	sw.solver.net.copy_from(pretrained_model)
+    	print 'Resuming from %s' % pretrained_model
+    print 'Solving...'
     sw.solver.solve()
     print 'done solving'
-    return model_paths
