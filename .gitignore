@@ -7,12 +7,12 @@ core*
 *.jpg
 *backup
 *backup/
+*caffemodel
 *.o*
 *.so
 data/
 output/
 log/
 *.txt
-models/
 output
 ObjectDiscovery/

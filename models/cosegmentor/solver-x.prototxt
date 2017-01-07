@@ -1,0 +1,20 @@
+net: "models/cosegmentor/train_base.prototxt"
+test_iter: 2000
+test_interval: 1000
+test_initialization: true
+base_lr: 0.003
+lr_policy: "step"
+gamma: 0.1
+stepsize: 50000
+display: 100
+average_loss: 100
+max_iter: 120000
+ iter_size: 2
+momentum: 0.9
+weight_decay: 0.0005
+# We disable standard caffe solver snapshotting and implement our own snapshot
+# function
+snapshot: 2000
+# We still use the snapshot prefix, though
+snapshot_prefix: "data/models/caffe/vgg16_fast_rcnn"
+#debug_info: true
